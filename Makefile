@@ -3,10 +3,9 @@
 # ──────────────────────────────────────────────
 CC      = x86_64-linux-gnu-gcc
 LD      = x86_64-linux-gnu-ld
-TARGET  = x86_64-elf   # We cross-compile for bare metal x86_64
 
 # ──────────────────────────────────────────────
-# Compiler Flags — explained below
+# Compiler Flags
 # ──────────────────────────────────────────────
 CFLAGS  = \
     -std=c11 \
@@ -23,7 +22,8 @@ CFLAGS  = \
     -Wall -Wextra \
     -fno-unwind-tables \
     -fno-asynchronous-unwind-tables \
-    -fno-exceptions
+    -fno-exceptions \
+    -Ikernel
 
 # ──────────────────────────────────────────────
 # Linker Flags
@@ -34,28 +34,33 @@ LDFLAGS = \
     -static
 
 # ──────────────────────────────────────────────
-# Source & Output
+# Sources — add new .c files here as we grow
 # ──────────────────────────────────────────────
-SRC     = kernel/kernel.c
-OBJ     = kernel/kernel.o
-ELF     = iso_root/boot/kernel.elf
-ISO     = macos-lite.iso
+SRCS = \
+    kernel/kernel.c \
+    kernel/pmm.c
+
+# Auto-generate object file names from sources
+OBJS = $(SRCS:.c=.o)
+
+ELF  = iso_root/boot/kernel.elf
+ISO  = macos-lite.iso
 
 .PHONY: all clean run
 
 all: $(ISO)
 
-# Step 1: Compile C source → object file
-$(OBJ): $(SRC)
-	$(CC) $(CFLAGS) -c $(SRC) -o $(OBJ)
+# Compile each .c → .o (pattern rule, works for all files)
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-# Step 2: Link object → ELF binary
-$(ELF): $(OBJ)
-	$(LD) $(LDFLAGS) $(OBJ) -o $(ELF)
+# Link all objects → ELF
+$(ELF): $(OBJS)
+	$(LD) $(LDFLAGS) $(OBJS) -o $(ELF)
 
-# Step 3: Build a bootable ISO using xorriso + Limine
+# Build bootable ISO
 $(ISO): $(ELF)
-	cp limine/limine-bios.sys   iso_root/boot/
+	cp limine/limine-bios.sys    iso_root/boot/
 	cp limine/limine-bios-cd.bin iso_root/boot/
 	xorriso -as mkisofs              \
 	    -b boot/limine-bios-cd.bin   \
@@ -66,9 +71,9 @@ $(ISO): $(ELF)
 	    iso_root -o $(ISO)
 	./limine/limine bios-install $(ISO)
 
-# Step 4: Run in QEMU
+# Run in QEMU
 run: $(ISO)
 	qemu-system-x86_64 -cdrom $(ISO) -m 256M
 
 clean:
-	rm -f $(OBJ) $(ELF) $(ISO)
+	rm -f $(OBJS) $(ELF) $(ISO)
