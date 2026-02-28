@@ -1,28 +1,19 @@
-/* linker.ld
- * We tell the linker:
- *   - Output format: 64-bit ELF for x86_64
- *   - Load address:  0xFFFFFFFF80000000 (higher-half, standard convention)
- *     This puts the kernel in the upper half of virtual memory,
- *     away from user programs (which will live in lower half later).
- */
-
 OUTPUT_FORMAT(elf64-x86-64)
 OUTPUT_ARCH(i386:x86-64)
 
 ENTRY(_start)
 
 PHDRS {
-    text    PT_LOAD FLAGS((1 << 0) | (1 << 2)); /* R+X: code   */
-    rodata  PT_LOAD FLAGS((1 << 2));             /* R:   read-only data */
-    data    PT_LOAD FLAGS((1 << 1) | (1 << 2)); /* R+W: data   */
+    text    PT_LOAD FLAGS((1 << 0) | (1 << 2)); /* R+X */
+    rodata  PT_LOAD FLAGS((1 << 2));             /* R   */
+    data    PT_LOAD FLAGS((1 << 1) | (1 << 2)); /* R+W */
 }
 
 SECTIONS {
-    /* Start at the higher half kernel base */
     . = 0xFFFFFFFF80000000;
 
-    /* ── Limine request sections ── must come first */
-    .requests_start_marker : {
+    /* ── Limine requests — must be in rodata segment ── */
+    .requests_start_marker : ALIGN(4096) {
         KEEP(*(.requests_start_marker))
     } :rodata
 
@@ -34,24 +25,22 @@ SECTIONS {
         KEEP(*(.requests_end_marker))
     } :rodata
 
-    /* ── Executable code ── */
-    .text : {
+    /* ── Code — MUST start on a fresh page ── */
+    .text : ALIGN(4096) {
         *(.text .text.*)
     } :text
 
-    /* ── Read-only data (constants, strings) ── */
-    .rodata : {
+    /* ── Read-only data — fresh page ── */
+    .rodata : ALIGN(4096) {
         *(.rodata .rodata.*)
     } :rodata
 
-    /* ── Read-write data (globals, BSS) ── */
-    .data : {
+    /* ── Read-write data — fresh page ── */
+    .data : ALIGN(4096) {
         *(.data .data.*)
     } :data
 
-    /* BSS: zero-initialized globals
-     * The bootloader zeroes this for us. */
-    .bss : {
+    .bss : ALIGN(4096) {
         *(COMMON)
         *(.bss .bss.*)
     } :data
