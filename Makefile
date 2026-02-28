@@ -1,12 +1,6 @@
-# ──────────────────────────────────────────────
-# Compiler & Linker
-# ──────────────────────────────────────────────
 CC      = x86_64-linux-gnu-gcc
 LD      = x86_64-linux-gnu-ld
 
-# ──────────────────────────────────────────────
-# Compiler Flags
-# ──────────────────────────────────────────────
 CFLAGS  = \
     -std=c11 \
     -ffreestanding \
@@ -25,25 +19,20 @@ CFLAGS  = \
     -fno-exceptions \
     -Ikernel
 
-# ──────────────────────────────────────────────
-# Linker Flags
-# ──────────────────────────────────────────────
 LDFLAGS = \
     -T kernel/linker.ld \
     -nostdlib \
     -static \
     -z max-page-size=0x1000
 
-# ──────────────────────────────────────────────
-# Sources — add new .c files here as we grow
-# ──────────────────────────────────────────────
 SRCS = \
-    kernel/kernel.c \
-    kernel/pmm.c
+    kernel/kernel.c      \
+    kernel/framebuffer.c \
+    kernel/pmm.c         \
+    kernel/gdt.c         \
+    kernel/idt.c
 
-# Auto-generate object file names from sources
 OBJS = $(SRCS:.c=.o)
-
 ELF  = iso_root/boot/kernel.elf
 ISO  = macos-lite.iso
 
@@ -51,15 +40,12 @@ ISO  = macos-lite.iso
 
 all: $(ISO)
 
-# Compile each .c → .o (pattern rule, works for all files)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Link all objects → ELF
 $(ELF): $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $(ELF)
 
-# Build bootable ISO
 $(ISO): $(ELF)
 	cp limine/limine-bios.sys    iso_root/boot/
 	cp limine/limine-bios-cd.bin iso_root/boot/
@@ -72,7 +58,6 @@ $(ISO): $(ELF)
 	    iso_root -o $(ISO)
 	./limine/limine bios-install $(ISO)
 
-# Run in QEMU
 run: $(ISO)
 	qemu-system-x86_64 -cdrom $(ISO) -m 256M
 
