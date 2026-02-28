@@ -3,45 +3,49 @@ OUTPUT_ARCH(i386:x86-64)
 
 ENTRY(_start)
 
+/* Define the Program Headers (PHDRS) with specific permissions */
 PHDRS {
-    text    PT_LOAD FLAGS((1 << 0) | (1 << 2)); /* R+X */
-    rodata  PT_LOAD FLAGS((1 << 2));             /* R   */
-    data    PT_LOAD FLAGS((1 << 1) | (1 << 2)); /* R+W */
+    text    PT_LOAD FLAGS((1 << 0) | (1 << 2)); /* Execute + Read */
+    rodata  PT_LOAD FLAGS((1 << 2));             /* Read-Only */
+    data    PT_LOAD FLAGS((1 << 1) | (1 << 2)); /* Write + Read */
 }
 
 SECTIONS {
+    /* The kernel starts at the 2GB higher-half base address */
     . = 0xFFFFFFFF80000000;
 
-    /* ── Limine requests — must be in rodata segment ── */
-    .requests_start_marker : ALIGN(4096) {
-        KEEP(*(.requests_start_marker))
-    } :rodata
-
-    .requests : {
-        KEEP(*(.requests))
-    } :rodata
-
-    .requests_end_marker : {
-        KEEP(*(.requests_end_marker))
-    } :rodata
-
-    /* ── Code — MUST start on a fresh page ── */
-    .text : ALIGN(4096) {
+    /* 1. Code Section (Executable) */
+    .text : {
         *(.text .text.*)
     } :text
 
-    /* ── Read-only data — fresh page ── */
-    .rodata : ALIGN(4096) {
+    /* 2. Read-Only Data Section (Aligned to a fresh 4KB page) */
+    /* We put the Limine requests here so they don't fight with .text permissions */
+    . = ALIGN(0x1000);
+
+    .rodata : {
+        KEEP(*(.requests_start_marker))
+        KEEP(*(.requests))
+        KEEP(*(.requests_end_marker))
         *(.rodata .rodata.*)
     } :rodata
 
-    /* ── Read-write data — fresh page ── */
-    .data : ALIGN(4096) {
+    /* 3. Read-Write Data Section (Aligned to a fresh 4KB page) */
+    . = ALIGN(0x1000);
+
+    .data : {
         *(.data .data.*)
     } :data
 
-    .bss : ALIGN(4096) {
+    /* 4. BSS Section (Uninitialized data, part of the Writable segment) */
+    .bss : {
         *(COMMON)
         *(.bss .bss.*)
     } :data
+
+    /* Discard sections that are not needed to keep the ELF clean */
+    /DISCARD/ : {
+        *(.eh_frame)
+        *(.note .note.*)
+    }
 }

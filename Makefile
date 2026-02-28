@@ -31,7 +31,8 @@ CFLAGS  = \
 LDFLAGS = \
     -T kernel/linker.ld \
     -nostdlib \
-    -static
+    -static \
+    -z max-page-size=0x1000
 
 # ──────────────────────────────────────────────
 # Sources — add new .c files here as we grow
