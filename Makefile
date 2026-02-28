@@ -1,8 +1,8 @@
 # ──────────────────────────────────────────────
 # Compiler & Linker
 # ──────────────────────────────────────────────
-CC      = x86_64-elf-gcc
-LD      = x86_64-elf-ld
+CC      = x86_64-linux-gnu-gcc
+LD      = x86_64-linux-gnu-ld
 TARGET  = x86_64-elf   # We cross-compile for bare metal x86_64
 
 # ──────────────────────────────────────────────
