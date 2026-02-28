@@ -30,7 +30,11 @@ SRCS = \
     kernel/framebuffer.c \
     kernel/pmm.c         \
     kernel/gdt.c         \
-    kernel/idt.c
+    kernel/idt.c         \
+    kernel/vmm.c         \
+    kernel/heap.c        \
+    kernel/pic.c         \
+    kernel/keyboard.c
 
 OBJS = $(SRCS:.c=.o)
 ELF  = iso_root/boot/kernel.elf
