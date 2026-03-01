@@ -120,9 +120,9 @@ static void shell_key(char c) {
 static uint8_t prev_buttons = 0;
 
 static void handle_mouse(void) {
-    int32_t mx = mouse_x();
-    int32_t my = mouse_y();
-    uint8_t btn = mouse_buttons();
+int32_t mx = mouse_x;
+int32_t my = mouse_y;
+uint8_t btn = mouse_buttons;
 
     /* Detect left button press (not held — only on transition 0→1) */
     uint8_t just_clicked = btn & ~prev_buttons & MOUSE_LEFT;

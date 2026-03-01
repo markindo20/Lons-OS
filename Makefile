@@ -69,3 +69,6 @@ run: $(ISO)
 
 clean:
 	rm -f $(OBJS) $(ELF) $(ISO)
+
+kernel/mouse.o: kernel/mouse.c kernel/mouse.h kernel/io.h kernel/framebuffer.h kernel/gui.h
+	$(CC) $(CFLAGS) -c kernel/mouse.c -o kernel/mouse.o
