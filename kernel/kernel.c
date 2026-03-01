@@ -1,5 +1,5 @@
 /*
- * kernel.c — Lons OS Entry Point – FINAL with mouse debug
+ * kernel.c — Lons OS Entry Point – FIXED
  */
 
 #include "limine.h"
@@ -192,11 +192,13 @@ void _start(void) {
     kprint("  [HEAP] Initializing...                 "); heap_init(kvirt+(512ULL*1024*1024),16ULL*1024*1024); print_ok();
     kprint("  [PIC]  Remapping controllers...        "); pic_init();  print_ok();
     kprint("  [KBD]  Installing keyboard driver...   "); kbd_init();  print_ok();
-    kprint("  [MOUSE] Installing mouse driver...     "); mouse_init(); print_ok();
 
-    // Unmask IRQ1 and IRQ12 (keyboard and mouse)
+    // Unmask IRQ1 (keyboard) and IRQ12 (mouse) BEFORE mouse_init
+    // so that the mouse ACK bytes can generate interrupts if needed
     pic_unmask_irq(1);
     pic_unmask_irq(12);
+
+    kprint("  [MOUSE] Installing mouse driver...     "); mouse_init(); print_ok();
 
     kprint("  [CPU]  Enabling interrupts...          "); __asm__ volatile("sti"); print_ok();
     kprint("  [GUI]  Starting window manager...      ");
@@ -242,17 +244,18 @@ void _start(void) {
         // Update debug counter display if it changed
         static uint64_t last_count = 0;
         if (mouse_interrupt_count != last_count) {
-            // Clear old number (simple rectangle)
+            mouse_erase_cursor();
             fb_fill_rect(debug_x, debug_y, 90, 16, GUI_DESKTOP);
             draw_uint64_decimal(debug_x, debug_y, mouse_interrupt_count, 0xFFFFFF);
+            mouse_draw_cursor();
             last_count = mouse_interrupt_count;
         }
 
         // Mouse handling (movement and clicks)
         if (mouse_poll()) {
             mouse_erase_cursor();
-            handle_mouse_click();   // check for button clicks
-            mouse_draw_cursor();     // redraw at new position
+            handle_mouse_click();
+            mouse_draw_cursor();
         }
 
         // Keyboard handling

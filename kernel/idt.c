@@ -1,11 +1,12 @@
 /*
- * idt.c — IDT + Exception + IRQ handlers – FINAL
+ * idt.c — IDT + Exception + IRQ handlers – FIXED
  */
 
 #include "idt.h"
 #include "gdt.h"
 #include "framebuffer.h"
 #include "keyboard.h"
+#include "pic.h"
 
 // Declare mouse handler from mouse.c
 extern void mouse_handler_c(void);
@@ -42,16 +43,15 @@ void exception_handler(interrupt_frame_t *frame) {
     for (;;) __asm__ volatile ("cli; hlt");
 }
 
-/* ── IRQ handler (vectors 32-47) ── */
+/* ── IRQ handler (vectors 32-47) — SINGLE DEFINITION ── */
 void irq_handler(interrupt_frame_t *frame) {
     uint8_t irq = (uint8_t)(frame->vector - 32);
     switch (irq) {
         case 1:  kbd_irq_handler(); break;
-        case 12: mouse_handler_c(); break;   // Call mouse handler for IRQ12
+        case 12: mouse_handler_c(); break;
         default: break;
     }
-    /* pic_send_eoi is called inside each specific handler */
-    (void)irq;
+    pic_send_eoi(irq);
 }
 
 /* ─────────────────────────────────────────────
@@ -75,7 +75,6 @@ STUB_NOERR(28) STUB_ERR(29)   STUB_ERR(30)   STUB_NOERR(31)
 
 /* ─────────────────────────────────────────────
  * IRQ stubs (vectors 32-47)
- * All hardware IRQs — no error code, just vector number
  * ───────────────────────────────────────────── */
 #define IRQ_STUB(n) \
     __asm__(".global irq_stub_" #n "\nirq_stub_" #n ":\n" \

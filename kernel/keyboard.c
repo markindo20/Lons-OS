@@ -1,5 +1,5 @@
 // kernel/keyboard.c
-// PS/2 Keyboard Driver with Circular Buffer and GUI Output – FINAL
+// PS/2 Keyboard Driver with Circular Buffer – FIXED (no EOI needed here, idt.c handles it)
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -44,14 +44,12 @@ static const char scancode_to_ascii_shift[] = {
 };
 
 void kbd_init(void) {
-    // Clear buffer
     kbd_buffer_head = kbd_buffer_tail = 0;
-    // PIC unmask is handled in kernel.c
 }
 
 static void kbd_push_char(char c) {
     int next = (kbd_buffer_head + 1) % BUFFER_SIZE;
-    if (next != kbd_buffer_tail) {  // buffer not full
+    if (next != kbd_buffer_tail) {
         kbd_buffer[kbd_buffer_head] = c;
         kbd_buffer_head = next;
     }
@@ -70,32 +68,29 @@ char kbd_getchar(void) {
 
 void kbd_irq_handler(void) {
     uint8_t status = inb(KEYBOARD_STATUS_PORT);
-    if (!(status & 0x01)) return; // no data
+    if (!(status & 0x01)) return;
 
     uint8_t scancode = inb(KEYBOARD_DATA_PORT);
 
-    // Handle key press/release (bit 7 indicates release)
     bool released = scancode & 0x80;
     scancode &= 0x7F;
 
     // Handle modifier keys
-    if (scancode == 0x2A || scancode == 0x36) { // Left/right shift
+    if (scancode == 0x2A || scancode == 0x36) {
         shift_pressed = !released;
         return;
     }
-    if (scancode == 0x1D) { // Left Ctrl
+    if (scancode == 0x1D) {
         ctrl_pressed = !released;
         return;
     }
-    if (scancode == 0x38) { // Left Alt
+    if (scancode == 0x38) {
         alt_pressed = !released;
         return;
     }
 
-    // Ignore releases for other keys (we only care about presses)
     if (released) return;
 
-    // Convert scancode to ASCII
     char c;
     if (shift_pressed) {
         c = scancode_to_ascii_shift[scancode];
@@ -103,8 +98,9 @@ void kbd_irq_handler(void) {
         c = scancode_to_ascii[scancode];
     }
 
-    if (c == 0) return; // unhandled key
+    if (c == 0) return;
 
-    // Push to buffer
     kbd_push_char(c);
+
+    // EOI is sent by irq_handler() in idt.c — do NOT send it here
 }

@@ -1,5 +1,5 @@
 // kernel/pic.c
-// Programmable Interrupt Controller (8259) driver – FINAL
+// Programmable Interrupt Controller (8259) driver – FIXED
 
 #include <stdint.h>
 #include "io.h"
@@ -36,9 +36,10 @@ void pic_init(void) {
     outb(PIC1_DATA, ICW4_8086);
     outb(PIC2_DATA, ICW4_8086);
 
-    // Restore masks (or set new ones)
-    outb(PIC1_DATA, a1);
-    outb(PIC2_DATA, a2);
+    // Mask ALL IRQs initially — drivers will unmask what they need
+    // But keep IRQ2 (cascade) unmasked on master so slave PIC works!
+    outb(PIC1_DATA, 0xFB);  // 1111 1011 — all masked except IRQ2 (cascade)
+    outb(PIC2_DATA, 0xFF);  // 1111 1111 — all masked
 }
 
 // Send End-Of-Interrupt to PIC(s)

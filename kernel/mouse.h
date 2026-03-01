@@ -14,7 +14,7 @@ extern int32_t mouse_y;
 extern uint8_t mouse_buttons;
 
 void mouse_init(void);
-void mouse_handler_c(void);  // for IDT
+void mouse_handler_c(void);
 bool mouse_is_ready(void);
 void mouse_get_state(int32_t *x, int32_t *y, uint8_t *buttons);
 void mouse_draw_cursor(void);
