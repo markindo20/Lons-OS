@@ -36,7 +36,9 @@ SRCS = \
     kernel/pic.c         \
     kernel/keyboard.c    \
     kernel/mouse.c       \
-    kernel/gui.c
+    kernel/gui.c         \
+    kernel/pit.c         \
+    kernel/rtc.c
 
 OBJS = $(SRCS:.c=.o)
 ELF  = iso_root/boot/kernel.elf
@@ -65,10 +67,7 @@ $(ISO): $(ELF)
 	./limine/limine bios-install $(ISO)
 
 run:
-	qemu-system-x86_64 -cdrom macos-lite.iso -m 256M
+	qemu-system-x86_64 -cdrom macos-lite.iso -m 256M -rtc base=localtime
 
 clean:
 	rm -f $(OBJS) $(ELF) $(ISO)
-
-kernel/mouse.o: kernel/mouse.c kernel/mouse.h kernel/io.h kernel/framebuffer.h kernel/gui.h
-	$(CC) $(CFLAGS) -c kernel/mouse.c -o kernel/mouse.o

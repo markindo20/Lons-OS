@@ -1,5 +1,5 @@
 /*
- * kernel.c — Lons OS Entry Point – FIXED
+ * kernel.c — Lons OS Entry Point – with PIT Timer & RTC Clock
  */
 
 #include "limine.h"
@@ -13,8 +13,9 @@
 #include "keyboard.h"
 #include "mouse.h"
 #include "gui.h"
+#include "pit.h"
+#include "rtc.h"
 
-// Debug counter from mouse.c
 extern volatile uint64_t mouse_interrupt_count;
 
 __attribute__((used, section(".requests_start_marker")))
@@ -91,9 +92,52 @@ static void shell_run(const char *line) {
         gui_set_color(term_wid, 0x004488FF);
         gui_print(term_wid, "\n  Commands\n  ────────\n");
         gui_set_color(term_wid, GUI_WINFG);
-        gui_print(term_wid, "  mem   memory usage\n");
-        gui_print(term_wid, "  cls   clear screen\n");
-        gui_print(term_wid, "  help  this list\n");
+        gui_print(term_wid, "  mem     memory usage\n");
+        gui_print(term_wid, "  cls     clear screen\n");
+        gui_print(term_wid, "  time    show current time\n");
+        gui_print(term_wid, "  date    show current date\n");
+        gui_print(term_wid, "  uptime  seconds since boot\n");
+        gui_print(term_wid, "  help    this list\n");
+        return;
+    }
+    /* time command */
+    if (line[0]=='t'&&line[1]=='i'&&line[2]=='m'&&line[3]=='e'&&!line[4]) {
+        rtc_time_t now;
+        rtc_read(&now);
+        char buf[9];
+        rtc_format_time(&now, buf);
+        gui_set_color(term_wid, 0x004488FF);
+        gui_print(term_wid, "\n  Time: ");
+        gui_set_color(term_wid, GUI_WINFG);
+        gui_print(term_wid, buf);
+        gui_print(term_wid, "\n");
+        return;
+    }
+    /* date command */
+    if (line[0]=='d'&&line[1]=='a'&&line[2]=='t'&&line[3]=='e'&&!line[4]) {
+        rtc_time_t now;
+        rtc_read(&now);
+        char dbuf[11];
+        rtc_format_date(&now, dbuf);
+        gui_set_color(term_wid, 0x004488FF);
+        gui_print(term_wid, "\n  Date: ");
+        gui_set_color(term_wid, GUI_WINFG);
+        gui_print(term_wid, dbuf);
+        gui_print(term_wid, "\n");
+        return;
+    }
+    /* uptime command */
+    if (line[0]=='u'&&line[1]=='p'&&line[2]=='t'&&line[3]=='i'
+        &&line[4]=='m'&&line[5]=='e'&&!line[6]) {
+        uint64_t secs = pit_get_seconds();
+        uint64_t mins = secs / 60;
+        uint64_t hrs  = mins / 60;
+        gui_set_color(term_wid, 0x004488FF);
+        gui_print(term_wid, "\n  Uptime: ");
+        gui_set_color(term_wid, GUI_WINFG);
+        gui_print_dec(term_wid, hrs); gui_print(term_wid, "h ");
+        gui_print_dec(term_wid, mins % 60); gui_print(term_wid, "m ");
+        gui_print_dec(term_wid, secs % 60); gui_print(term_wid, "s\n");
         return;
     }
     if (line[0]) {
@@ -125,38 +169,30 @@ static uint8_t last_mouse_buttons = 0;
 static void handle_mouse_click(void) {
     uint8_t just_clicked = mouse_buttons & ~last_mouse_buttons;
     last_mouse_buttons = mouse_buttons;
-
     if (!(just_clicked & MOUSE_LEFT)) return;
-
-    // Check if click landed on any window's title bar to focus it
     for (int i = 0; i < GUI_MAX_WINDOWS; i++) {
         gui_window_t *w = &g_windows[i];
         if (!w->visible) continue;
-
-        int in_x = (mouse_x >= w->x && mouse_x < w->x + (int32_t)w->w);
+        int in_x  = (mouse_x >= w->x && mouse_x < w->x + (int32_t)w->w);
         int in_tb = (mouse_y >= w->y && mouse_y < w->y + TITLEBAR_H);
-
-        if (in_x && in_tb) {
-            gui_window_focus(i);
-            return;
-        }
+        if (in_x && in_tb) { gui_window_focus(i); return; }
     }
 }
 
-// Helper to draw a decimal number directly on the framebuffer
-static void draw_uint64_decimal(uint32_t x, uint32_t y, uint64_t n, uint32_t color) {
-    char buf[21];
-    int i = 20;
-    buf[i] = '\0';
-    if (n == 0) {
-        buf[--i] = '0';
-    } else {
-        while (n > 0) {
-            buf[--i] = '0' + (n % 10);
-            n /= 10;
-        }
-    }
-    fb_print_at(x, y, &buf[i], color, GUI_DESKTOP);
+/* ── Menubar clock update ── */
+static void update_menubar_clock(void) {
+    rtc_time_t now;
+    rtc_read(&now);
+    char time_buf[9];
+    rtc_format_time(&now, time_buf);
+
+    // Position: right side of menubar (8 chars * 8px = 64px wide)
+    uint32_t clock_x = g_fb.width - (8 * 8) - 16;
+    uint32_t clock_y = (MENUBAR_H - 16) / 2;  // vertically centered
+
+    // Clear old clock area and draw new one
+    fb_fill_rect(clock_x, 0, 8 * 8 + 8, MENUBAR_H - 1, GUI_MENUBAR);
+    fb_print_at(clock_x, clock_y, time_buf, GUI_MENUFG, GUI_MENUBAR);
 }
 
 /* ─────────────────────────────────────────────
@@ -191,14 +227,25 @@ void _start(void) {
     kprint("  [VMM]  Building page tables...         "); vmm_init(hhdm,memmap_req.response,kphys,kvirt); print_ok();
     kprint("  [HEAP] Initializing...                 "); heap_init(kvirt+(512ULL*1024*1024),16ULL*1024*1024); print_ok();
     kprint("  [PIC]  Remapping controllers...        "); pic_init();  print_ok();
+    kprint("  [PIT]  Starting timer (100 Hz)...      "); pit_init();  print_ok();
     kprint("  [KBD]  Installing keyboard driver...   "); kbd_init();  print_ok();
 
-    // Unmask IRQ1 (keyboard) and IRQ12 (mouse) BEFORE mouse_init
-    // so that the mouse ACK bytes can generate interrupts if needed
+    // Unmask IRQ0 (PIT), IRQ1 (keyboard), IRQ12 (mouse)
+    pic_unmask_irq(0);
     pic_unmask_irq(1);
     pic_unmask_irq(12);
 
     kprint("  [MOUSE] Installing mouse driver...     "); mouse_init(); print_ok();
+    kprint("  [RTC]  Reading real-time clock...       ");
+    {
+        rtc_time_t boot_time;
+        rtc_read(&boot_time);
+        char tbuf[9], dbuf[11];
+        rtc_format_time(&boot_time, tbuf);
+        rtc_format_date(&boot_time, dbuf);
+        kprint(dbuf); kprint(" "); kprint(tbuf); kprint(" ");
+    }
+    print_ok();
 
     kprint("  [CPU]  Enabling interrupts...          "); __asm__ volatile("sti"); print_ok();
     kprint("  [GUI]  Starting window manager...      ");
@@ -229,36 +276,32 @@ void _start(void) {
     gui_set_color(term_wid, GUI_WINFG);
 
     shell_prompt();
-
-    /* Draw initial cursor */
     mouse_draw_cursor();
 
-    /* Position for debug counter (top-right corner) */
-    uint32_t debug_x = g_fb.width - 100;
-    uint32_t debug_y = MENUBAR_H + 5;
+    /* Track last second to know when to update clock */
+    uint64_t last_clock_tick = 0;
 
     /* ── Main event loop ── */
     while (1) {
         __asm__ volatile ("hlt");
 
-        // Update debug counter display if it changed
-        static uint64_t last_count = 0;
-        if (mouse_interrupt_count != last_count) {
+        /* ── Update menubar clock once per second ── */
+        uint64_t now_tick = pit_get_ticks();
+        if (now_tick - last_clock_tick >= PIT_HZ) {
+            last_clock_tick = now_tick;
             mouse_erase_cursor();
-            fb_fill_rect(debug_x, debug_y, 90, 16, GUI_DESKTOP);
-            draw_uint64_decimal(debug_x, debug_y, mouse_interrupt_count, 0xFFFFFF);
+            update_menubar_clock();
             mouse_draw_cursor();
-            last_count = mouse_interrupt_count;
         }
 
-        // Mouse handling (movement and clicks)
+        /* ── Mouse handling ── */
         if (mouse_poll()) {
             mouse_erase_cursor();
             handle_mouse_click();
             mouse_draw_cursor();
         }
 
-        // Keyboard handling
+        /* ── Keyboard handling ── */
         while (kbd_haschar()) {
             mouse_erase_cursor();
             shell_key(kbd_getchar());

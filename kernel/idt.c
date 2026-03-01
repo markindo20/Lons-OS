@@ -7,6 +7,7 @@
 #include "framebuffer.h"
 #include "keyboard.h"
 #include "pic.h"
+#include "pit.h"
 
 // Declare mouse handler from mouse.c
 extern void mouse_handler_c(void);
@@ -47,6 +48,7 @@ void exception_handler(interrupt_frame_t *frame) {
 void irq_handler(interrupt_frame_t *frame) {
     uint8_t irq = (uint8_t)(frame->vector - 32);
     switch (irq) {
+        case 0:  pit_irq_handler(); break;
         case 1:  kbd_irq_handler(); break;
         case 12: mouse_handler_c(); break;
         default: break;
