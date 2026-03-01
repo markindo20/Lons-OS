@@ -1,11 +1,14 @@
 /*
- * idt.c — IDT + Exception + IRQ handlers
+ * idt.c — IDT + Exception + IRQ handlers – FINAL
  */
 
 #include "idt.h"
 #include "gdt.h"
 #include "framebuffer.h"
 #include "keyboard.h"
+
+// Declare mouse handler from mouse.c
+extern void mouse_handler_c(void);
 
 static idt_entry_t idt[256];
 static idtr_t      idtr;
@@ -43,8 +46,8 @@ void exception_handler(interrupt_frame_t *frame) {
 void irq_handler(interrupt_frame_t *frame) {
     uint8_t irq = (uint8_t)(frame->vector - 32);
     switch (irq) {
-        case 1: kbd_irq_handler(); break;
-        /* IRQ0 (timer), IRQ12 (mouse) etc. will be added here later */
+        case 1:  kbd_irq_handler(); break;
+        case 12: mouse_handler_c(); break;   // Call mouse handler for IRQ12
         default: break;
     }
     /* pic_send_eoi is called inside each specific handler */
@@ -113,16 +116,15 @@ __asm__ (
     "add $16, %rsp\niretq\n"
 );
 
-/* ── Gate builder ── */
-static void idt_set_gate(uint8_t vector, void *handler) {
-    uint64_t addr = (uint64_t)handler;
-    idt[vector].offset_low  = (uint16_t)(addr & 0xFFFF);
-    idt[vector].selector    = GDT_KERNEL_CODE;
-    idt[vector].ist         = 0;
-    idt[vector].type_attr   = 0x8E;
-    idt[vector].offset_mid  = (uint16_t)((addr >> 16) & 0xFFFF);
-    idt[vector].offset_high = (uint32_t)((addr >> 32) & 0xFFFFFFFF);
-    idt[vector].reserved    = 0;
+/* ── Global IDT gate setter (used by drivers) ── */
+void idt_set_gate(uint8_t num, uint64_t base, uint16_t sel, uint8_t flags) {
+    idt[num].offset_low  = (uint16_t)(base & 0xFFFF);
+    idt[num].selector    = sel;
+    idt[num].ist         = 0;
+    idt[num].type_attr   = flags;
+    idt[num].offset_mid  = (uint16_t)((base >> 16) & 0xFFFF);
+    idt[num].offset_high = (uint32_t)((base >> 32) & 0xFFFFFFFF);
+    idt[num].reserved    = 0;
 }
 
 /* Forward declarations — exceptions */
@@ -155,32 +157,56 @@ extern void irq_stub_46(void); extern void irq_stub_47(void);
 
 void idt_init(void) {
     /* Exceptions 0-31 */
-    idt_set_gate(0,  isr_stub_0);  idt_set_gate(1,  isr_stub_1);
-    idt_set_gate(2,  isr_stub_2);  idt_set_gate(3,  isr_stub_3);
-    idt_set_gate(4,  isr_stub_4);  idt_set_gate(5,  isr_stub_5);
-    idt_set_gate(6,  isr_stub_6);  idt_set_gate(7,  isr_stub_7);
-    idt_set_gate(8,  isr_stub_8);  idt_set_gate(9,  isr_stub_9);
-    idt_set_gate(10, isr_stub_10); idt_set_gate(11, isr_stub_11);
-    idt_set_gate(12, isr_stub_12); idt_set_gate(13, isr_stub_13);
-    idt_set_gate(14, isr_stub_14); idt_set_gate(15, isr_stub_15);
-    idt_set_gate(16, isr_stub_16); idt_set_gate(17, isr_stub_17);
-    idt_set_gate(18, isr_stub_18); idt_set_gate(19, isr_stub_19);
-    idt_set_gate(20, isr_stub_20); idt_set_gate(21, isr_stub_21);
-    idt_set_gate(22, isr_stub_22); idt_set_gate(23, isr_stub_23);
-    idt_set_gate(24, isr_stub_24); idt_set_gate(25, isr_stub_25);
-    idt_set_gate(26, isr_stub_26); idt_set_gate(27, isr_stub_27);
-    idt_set_gate(28, isr_stub_28); idt_set_gate(29, isr_stub_29);
-    idt_set_gate(30, isr_stub_30); idt_set_gate(31, isr_stub_31);
+    idt_set_gate(0,  (uint64_t)isr_stub_0,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(1,  (uint64_t)isr_stub_1,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(2,  (uint64_t)isr_stub_2,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(3,  (uint64_t)isr_stub_3,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(4,  (uint64_t)isr_stub_4,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(5,  (uint64_t)isr_stub_5,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(6,  (uint64_t)isr_stub_6,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(7,  (uint64_t)isr_stub_7,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(8,  (uint64_t)isr_stub_8,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(9,  (uint64_t)isr_stub_9,  GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(10, (uint64_t)isr_stub_10, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(11, (uint64_t)isr_stub_11, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(12, (uint64_t)isr_stub_12, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(13, (uint64_t)isr_stub_13, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(14, (uint64_t)isr_stub_14, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(15, (uint64_t)isr_stub_15, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(16, (uint64_t)isr_stub_16, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(17, (uint64_t)isr_stub_17, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(18, (uint64_t)isr_stub_18, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(19, (uint64_t)isr_stub_19, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(20, (uint64_t)isr_stub_20, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(21, (uint64_t)isr_stub_21, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(22, (uint64_t)isr_stub_22, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(23, (uint64_t)isr_stub_23, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(24, (uint64_t)isr_stub_24, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(25, (uint64_t)isr_stub_25, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(26, (uint64_t)isr_stub_26, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(27, (uint64_t)isr_stub_27, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(28, (uint64_t)isr_stub_28, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(29, (uint64_t)isr_stub_29, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(30, (uint64_t)isr_stub_30, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(31, (uint64_t)isr_stub_31, GDT_KERNEL_CODE, 0x8E);
 
     /* Hardware IRQs 32-47 */
-    idt_set_gate(32, irq_stub_32); idt_set_gate(33, irq_stub_33);
-    idt_set_gate(34, irq_stub_34); idt_set_gate(35, irq_stub_35);
-    idt_set_gate(36, irq_stub_36); idt_set_gate(37, irq_stub_37);
-    idt_set_gate(38, irq_stub_38); idt_set_gate(39, irq_stub_39);
-    idt_set_gate(40, irq_stub_40); idt_set_gate(41, irq_stub_41);
-    idt_set_gate(42, irq_stub_42); idt_set_gate(43, irq_stub_43);
-    idt_set_gate(44, irq_stub_44); idt_set_gate(45, irq_stub_45);
-    idt_set_gate(46, irq_stub_46); idt_set_gate(47, irq_stub_47);
+    idt_set_gate(32, (uint64_t)irq_stub_32, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(33, (uint64_t)irq_stub_33, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(34, (uint64_t)irq_stub_34, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(35, (uint64_t)irq_stub_35, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(36, (uint64_t)irq_stub_36, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(37, (uint64_t)irq_stub_37, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(38, (uint64_t)irq_stub_38, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(39, (uint64_t)irq_stub_39, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(40, (uint64_t)irq_stub_40, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(41, (uint64_t)irq_stub_41, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(42, (uint64_t)irq_stub_42, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(43, (uint64_t)irq_stub_43, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(44, (uint64_t)irq_stub_44, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(45, (uint64_t)irq_stub_45, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(46, (uint64_t)irq_stub_46, GDT_KERNEL_CODE, 0x8E);
+    idt_set_gate(47, (uint64_t)irq_stub_47, GDT_KERNEL_CODE, 0x8E);
 
     idtr.limit = (uint16_t)(sizeof(idt) - 1);
     idtr.base  = (uint64_t)&idt;

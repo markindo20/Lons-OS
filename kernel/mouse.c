@@ -1,14 +1,18 @@
 // kernel/mouse.c
-// PS/2 Mouse Driver with GUI Integration
+// PS/2 Mouse Driver with GUI Integration – FINAL
 
 #include <stdint.h>
 #include <stdbool.h>
 #include "io.h"
 #include "framebuffer.h"
 #include "gui.h"
+#include "idt.h"
 
-// External IDT function from idt.c
-extern void idt_set_gate(uint8_t num, uint64_t base, uint16_t sel, uint8_t flags);
+// Assembly interrupt wrapper (defined below)
+extern void mouse_handler(void);
+
+// Debug: interrupt counter – visible from kernel.c
+volatile uint64_t mouse_interrupt_count = 0;
 
 // Mouse constants
 #define MOUSE_DATA_PORT     0x60
@@ -53,7 +57,6 @@ static int32_t prev_mouse_y = 0;
 static uint32_t cursor_color = 0xFFFFFF; // White cursor
 
 // Forward declarations
-static void mouse_handler(void);
 static void mouse_wait(uint8_t type);
 static void mouse_write(uint8_t data);
 static uint8_t mouse_read(void);
@@ -63,6 +66,9 @@ void clear_cursor(void);
 
 // Mouse interrupt handler (assembly wrapper calls this)
 void mouse_handler_c(void) {
+    // Increment debug counter
+    mouse_interrupt_count++;
+
     uint8_t status = inb(MOUSE_STATUS_PORT);
     
     if (!(status & MOUSE_STATUS_OUTPUT_FULL)) {
@@ -121,14 +127,44 @@ void mouse_handler_c(void) {
     outb(0x20, 0x20); // Master PIC
 }
 
-// Assembly wrapper for interrupt handler
+// Assembly wrapper for interrupt handler (x86_64 compatible, Intel syntax)
 __asm__(
+    ".intel_syntax noprefix\n"
     ".global mouse_handler\n"
     "mouse_handler:\n"
-    "    pusha\n"
+    "    push rax\n"
+    "    push rcx\n"
+    "    push rdx\n"
+    "    push rsi\n"
+    "    push rdi\n"
+    "    push r8\n"
+    "    push r9\n"
+    "    push r10\n"
+    "    push r11\n"
+    "    push rbx\n"
+    "    push rbp\n"
+    "    push r12\n"
+    "    push r13\n"
+    "    push r14\n"
+    "    push r15\n"
     "    call mouse_handler_c\n"
-    "    popa\n"
+    "    pop r15\n"
+    "    pop r14\n"
+    "    pop r13\n"
+    "    pop r12\n"
+    "    pop rbp\n"
+    "    pop rbx\n"
+    "    pop r11\n"
+    "    pop r10\n"
+    "    pop r9\n"
+    "    pop r8\n"
+    "    pop rdi\n"
+    "    pop rsi\n"
+    "    pop rdx\n"
+    "    pop rcx\n"
+    "    pop rax\n"
     "    iretq\n"
+    ".att_syntax\n"
 );
 
 static void mouse_wait(uint8_t type) {
@@ -200,14 +236,14 @@ void draw_cursor(void) {
     // Draw arrow shape
     for (int i = 0; i < CURSOR_SIZE; i++) {
         // Main diagonal
-        fb_putpixel(mouse_x + i, mouse_y + i, cursor_color);
+        fb_put_pixel(mouse_x + i, mouse_y + i, cursor_color);
         // Top edge
         if (i < CURSOR_SIZE / 2) {
-            fb_putpixel(mouse_x + i, mouse_y, cursor_color);
+            fb_put_pixel(mouse_x + i, mouse_y, cursor_color);
         }
         // Bottom edge
         if (i < CURSOR_SIZE * 2 / 3) {
-            fb_putpixel(mouse_x, mouse_y + i, cursor_color);
+            fb_put_pixel(mouse_x, mouse_y + i, cursor_color);
         }
     }
     
@@ -215,7 +251,7 @@ void draw_cursor(void) {
     for (int y = 1; y < CURSOR_SIZE - 2; y++) {
         for (int x = 1; x < y; x++) {
             if (x + y < CURSOR_SIZE) {
-                fb_putpixel(mouse_x + x, mouse_y + y, 0xCCCCCC); // Light gray fill
+                fb_put_pixel(mouse_x + x, mouse_y + y, 0xCCCCCC); // Light gray fill
             }
         }
     }
@@ -234,6 +270,9 @@ void mouse_init(void) {
     // Enable mouse auxiliary device
     outb(MOUSE_COMMAND_PORT, MOUSE_CMD_ENABLE);
     
+    // Small delay to let the controller respond
+    for (volatile int i = 0; i < 10000; i++);
+    
     // Enable interrupts
     mouse_wait(1);
     outb(MOUSE_COMMAND_PORT, 0x20); // Read command byte
@@ -246,11 +285,11 @@ void mouse_init(void) {
     
     // Reset mouse to defaults
     mouse_write(MOUSE_CMD_DEFAULT);
-    mouse_read(); // Acknowledge
+    mouse_read(); // Acknowledge (ignore)
     
     // Enable streaming
     mouse_write(MOUSE_CMD_ENABLE_STREAMING);
-    mouse_read(); // Acknowledge
+    mouse_read(); // Acknowledge (ignore)
     
     // Set initial position to center of screen
     mouse_x = SCREEN_WIDTH / 2;

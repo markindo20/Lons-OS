@@ -225,6 +225,20 @@ void gui_window_focus(int wid) {
 }
 
 /* ─────────────────────────────────────────────
+ * gui_redraw_area — Redraw a rectangular region (for cursor erasing)
+ * ───────────────────────────────────────────── */
+void gui_redraw_area(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+    // FIXME: Temporary – only redraws the desktop background.
+    // A proper implementation should redraw any windows intersecting this area.
+    fb_fill_rect(x, y, w, h, GUI_DESKTOP);
+
+    // If the area overlaps the menu bar, redraw it.
+    if (y < MENUBAR_H) {
+        gui_draw_menubar();
+    }
+}
+
+/* ─────────────────────────────────────────────
  * Per-window text output
  *
  * Each window maintains its own cursor (con_x, con_y).

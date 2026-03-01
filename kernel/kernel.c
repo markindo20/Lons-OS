@@ -1,5 +1,5 @@
 /*
- * kernel.c — Lons OS Entry Point
+ * kernel.c — Lons OS Entry Point – FINAL with mouse debug
  */
 
 #include "limine.h"
@@ -13,6 +13,9 @@
 #include "keyboard.h"
 #include "mouse.h"
 #include "gui.h"
+
+// Debug counter from mouse.c
+extern volatile uint64_t mouse_interrupt_count;
 
 __attribute__((used, section(".requests_start_marker")))
 static volatile LIMINE_REQUESTS_START_MARKER;
@@ -116,35 +119,44 @@ static void shell_key(char c) {
     }
 }
 
-/* ── Mouse click handler ── */
-static uint8_t prev_buttons = 0;
+/* ── Mouse click handling ── */
+static uint8_t last_mouse_buttons = 0;
 
-static void handle_mouse(void) {
-int32_t mx = mouse_x;
-int32_t my = mouse_y;
-uint8_t btn = mouse_buttons;
+static void handle_mouse_click(void) {
+    uint8_t just_clicked = mouse_buttons & ~last_mouse_buttons;
+    last_mouse_buttons = mouse_buttons;
 
-    /* Detect left button press (not held — only on transition 0→1) */
-    uint8_t just_clicked = btn & ~prev_buttons & MOUSE_LEFT;
-    prev_buttons = btn;
+    if (!(just_clicked & MOUSE_LEFT)) return;
 
-    if (!just_clicked) return;
-
-    /* Check if click landed on any window's title bar — focus it */
+    // Check if click landed on any window's title bar to focus it
     for (int i = 0; i < GUI_MAX_WINDOWS; i++) {
         gui_window_t *w = &g_windows[i];
         if (!w->visible) continue;
 
-        int in_x = (mx >= w->x && mx < w->x + (int32_t)w->w);
-        int in_tb = (my >= w->y && my < w->y + TITLEBAR_H);
+        int in_x = (mouse_x >= w->x && mouse_x < w->x + (int32_t)w->w);
+        int in_tb = (mouse_y >= w->y && mouse_y < w->y + TITLEBAR_H);
 
         if (in_x && in_tb) {
             gui_window_focus(i);
-            /* Redraw cursor on top after focus change */
-            mouse_draw_cursor();
             return;
         }
     }
+}
+
+// Helper to draw a decimal number directly on the framebuffer
+static void draw_uint64_decimal(uint32_t x, uint32_t y, uint64_t n, uint32_t color) {
+    char buf[21];
+    int i = 20;
+    buf[i] = '\0';
+    if (n == 0) {
+        buf[--i] = '0';
+    } else {
+        while (n > 0) {
+            buf[--i] = '0' + (n % 10);
+            n /= 10;
+        }
+    }
+    fb_print_at(x, y, &buf[i], color, GUI_DESKTOP);
 }
 
 /* ─────────────────────────────────────────────
@@ -181,6 +193,11 @@ void _start(void) {
     kprint("  [PIC]  Remapping controllers...        "); pic_init();  print_ok();
     kprint("  [KBD]  Installing keyboard driver...   "); kbd_init();  print_ok();
     kprint("  [MOUSE] Installing mouse driver...     "); mouse_init(); print_ok();
+
+    // Unmask IRQ1 and IRQ12 (keyboard and mouse)
+    pic_unmask_irq(1);
+    pic_unmask_irq(12);
+
     kprint("  [CPU]  Enabling interrupts...          "); __asm__ volatile("sti"); print_ok();
     kprint("  [GUI]  Starting window manager...      ");
 
@@ -214,18 +231,31 @@ void _start(void) {
     /* Draw initial cursor */
     mouse_draw_cursor();
 
+    /* Position for debug counter (top-right corner) */
+    uint32_t debug_x = g_fb.width - 100;
+    uint32_t debug_y = MENUBAR_H + 5;
+
     /* ── Main event loop ── */
     while (1) {
         __asm__ volatile ("hlt");
 
-        /* Mouse events */
-        if (mouse_poll()) {
-            mouse_erase_cursor();
-            handle_mouse();
-            mouse_draw_cursor();
+        // Update debug counter display if it changed
+        static uint64_t last_count = 0;
+        if (mouse_interrupt_count != last_count) {
+            // Clear old number (simple rectangle)
+            fb_fill_rect(debug_x, debug_y, 90, 16, GUI_DESKTOP);
+            draw_uint64_decimal(debug_x, debug_y, mouse_interrupt_count, 0xFFFFFF);
+            last_count = mouse_interrupt_count;
         }
 
-        /* Keyboard events */
+        // Mouse handling (movement and clicks)
+        if (mouse_poll()) {
+            mouse_erase_cursor();
+            handle_mouse_click();   // check for button clicks
+            mouse_draw_cursor();     // redraw at new position
+        }
+
+        // Keyboard handling
         while (kbd_haschar()) {
             mouse_erase_cursor();
             shell_key(kbd_getchar());

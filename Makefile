@@ -64,8 +64,8 @@ $(ISO): $(ELF)
 	    iso_root -o $(ISO)
 	./limine/limine bios-install $(ISO)
 
-run: $(ISO)
-	qemu-system-x86_64 -cdrom $(ISO) -m 256M -device ps2-mouse
+run:
+	qemu-system-x86_64 -cdrom macos-lite.iso -m 256M
 
 clean:
 	rm -f $(OBJS) $(ELF) $(ISO)

@@ -79,6 +79,9 @@ void gui_window_focus(int wid);
 /* gui_draw_menubar — Redraw the menu bar (call after window changes). */
 void gui_draw_menubar(void);
 
+/* Redraw a rectangular area of the screen (for cursor erasing) */
+void gui_redraw_area(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+
 /* ─────────────────────────────────────────────
  * Per-window text output
  * ───────────────────────────────────────────── */
