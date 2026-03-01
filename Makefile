@@ -34,21 +34,39 @@ SRCS = \
     kernel/vmm.c         \
     kernel/heap.c        \
     kernel/pic.c         \
+    kernel/pit.c         \
+    kernel/rtc.c         \
     kernel/keyboard.c    \
     kernel/mouse.c       \
+    kernel/sched.c       \
     kernel/gui.c         \
-    kernel/pit.c         \
-    kernel/rtc.c
+    kernel/vfs.c         \
+    kernel/ramfs.c       \
+    kernel/ata.c         \
+    kernel/fat32.c
 
-OBJS = $(SRCS:.c=.o)
+C_OBJS  = $(SRCS:.c=.o)
+ASM_OBJ = kernel/context_switch.o
+OBJS    = $(C_OBJS) $(ASM_OBJ)
+
 ELF  = iso_root/boot/kernel.elf
 ISO  = macos-lite.iso
+DISK = disk.img
 
-.PHONY: all clean run
+.PHONY: all clean run disk
 
 all: $(ISO)
 
+# Create a 64 MB FAT32 disk image (run once before first 'make run')
+disk:
+	dd if=/dev/zero of=$(DISK) bs=1M count=64
+	mkfs.fat -F 32 -n "LONS_OS" $(DISK)
+	@echo "disk.img created — run 'make run' to boot with it"
+
 %.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+kernel/context_switch.o: kernel/context_switch.S
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(ELF): $(OBJS)
@@ -66,8 +84,18 @@ $(ISO): $(ELF)
 	    iso_root -o $(ISO)
 	./limine/limine bios-install $(ISO)
 
-run:
-	qemu-system-x86_64 -cdrom macos-lite.iso -m 256M -rtc base=localtime
+# Run with disk if it exists, without if it doesn't
+run: $(ISO)
+	@if [ -f $(DISK) ]; then \
+	    qemu-system-x86_64 -cdrom $(ISO) -hda $(DISK) -m 256M; \
+	else \
+	    echo "No disk.img — run 'make disk' first for FAT32 support"; \
+	    qemu-system-x86_64 -cdrom $(ISO) -m 256M; \
+	fi
 
 clean:
-	rm -f $(OBJS) $(ELF) $(ISO)
+	rm -f $(C_OBJS) $(ASM_OBJ) $(ELF) $(ISO)
+
+# Clean everything including the disk image
+distclean: clean
+	rm -f $(DISK)
