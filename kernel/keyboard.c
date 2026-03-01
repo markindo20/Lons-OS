@@ -88,9 +88,9 @@ static char kb_buf_pop(void) {
 }
 
 /* ─────────────────────────────────────────────
- * keyboard_irq_handler — called from IDT on IRQ1
+ * kbd_irq_handler — called from IDT on IRQ1
  * ───────────────────────────────────────────── */
-void keyboard_irq_handler(void) {
+void kbd_irq_handler(void) {
     uint8_t sc = inb(KB_DATA_PORT);
 
     /* Track shift/caps state */
@@ -117,17 +117,17 @@ done:
 /* ─────────────────────────────────────────────
  * Public API
  * ───────────────────────────────────────────── */
-void keyboard_init(void) {
+void kbd_init(void) {
     /* Unmask IRQ1 in the PIC — keyboard interrupts now flow */
     pic_unmask_irq(1);
 }
 
-int keyboard_haskey(void) {
+int kbd_haschar(void) {
     return kb_read != kb_write;
 }
 
-char keyboard_getchar(void) {
-    while (!keyboard_haskey()) {
+char kbd_getchar(void) {
+    while (!kbd_haschar()) {
         __asm__ volatile ("hlt"); /* Wait for next interrupt */
     }
     return kb_buf_pop();

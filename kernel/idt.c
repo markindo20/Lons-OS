@@ -43,7 +43,7 @@ void exception_handler(interrupt_frame_t *frame) {
 void irq_handler(interrupt_frame_t *frame) {
     uint8_t irq = (uint8_t)(frame->vector - 32);
     switch (irq) {
-        case 1: keyboard_irq_handler(); break;
+        case 1: kbd_irq_handler(); break;
         /* IRQ0 (timer), IRQ12 (mouse) etc. will be added here later */
         default: break;
     }

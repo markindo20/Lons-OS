@@ -34,7 +34,8 @@ SRCS = \
     kernel/vmm.c         \
     kernel/heap.c        \
     kernel/pic.c         \
-    kernel/keyboard.c
+    kernel/keyboard.c    \
+    kernel/gui.c
 
 OBJS = $(SRCS:.c=.o)
 ELF  = iso_root/boot/kernel.elf
