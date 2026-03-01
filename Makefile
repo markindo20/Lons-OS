@@ -35,6 +35,7 @@ SRCS = \
     kernel/heap.c        \
     kernel/pic.c         \
     kernel/keyboard.c    \
+    kernel/mouse.c       \
     kernel/gui.c
 
 OBJS = $(SRCS:.c=.o)
@@ -64,7 +65,7 @@ $(ISO): $(ELF)
 	./limine/limine bios-install $(ISO)
 
 run: $(ISO)
-	qemu-system-x86_64 -cdrom $(ISO) -m 256M
+	qemu-system-x86_64 -cdrom $(ISO) -m 256M -device ps2-mouse
 
 clean:
 	rm -f $(OBJS) $(ELF) $(ISO)

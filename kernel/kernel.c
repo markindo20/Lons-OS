@@ -1,6 +1,5 @@
 /*
  * kernel.c — Lons OS Entry Point
- * Boots into GUI desktop with a terminal window.
  */
 
 #include "limine.h"
@@ -12,9 +11,9 @@
 #include "heap.h"
 #include "pic.h"
 #include "keyboard.h"
+#include "mouse.h"
 #include "gui.h"
 
-/* ── Limine Requests ── */
 __attribute__((used, section(".requests_start_marker")))
 static volatile LIMINE_REQUESTS_START_MARKER;
 
@@ -22,17 +21,14 @@ __attribute__((used, section(".requests")))
 static volatile struct limine_framebuffer_request fb_req = {
     .id = LIMINE_FRAMEBUFFER_REQUEST, .revision = 0
 };
-
 __attribute__((used, section(".requests")))
 static volatile struct limine_memmap_request memmap_req = {
     .id = LIMINE_MEMMAP_REQUEST, .revision = 0
 };
-
 __attribute__((used, section(".requests")))
 static volatile struct limine_hhdm_request hhdm_req = {
     .id = LIMINE_HHDM_REQUEST, .revision = 0
 };
-
 __attribute__((used, section(".requests")))
 static volatile struct limine_kernel_address_request kaddr_req = {
     .id = LIMINE_KERNEL_ADDRESS_REQUEST, .revision = 0
@@ -45,29 +41,26 @@ static void cpu_halt(void) {
     for (;;) __asm__ volatile ("cli; hlt");
 }
 
-/* ── Boot log uses raw framebuffer console ── */
 #define kprint     fb_console_print
 #define kprint_hex fb_console_print_hex
 #define kprint_dec fb_console_print_dec
 
 static void print_ok(void) {
-    fb_console_set_color(0x0044FF88, 0x00000000);
+    fb_console_set_color(0x0044FF88, 0);
     kprint("OK\n");
-    fb_console_set_color(0x00FFFFFF, 0x00000000);
+    fb_console_set_color(0x00FFFFFF, 0);
 }
 static void print_fail(const char *msg) {
-    fb_console_set_color(0x00FF4444, 0x00000000);
+    fb_console_set_color(0x00FF4444, 0);
     kprint(msg); kprint("\n");
-    fb_console_set_color(0x00FFFFFF, 0x00000000);
+    fb_console_set_color(0x00FFFFFF, 0);
     cpu_halt();
 }
 
-/* ─────────────────────────────────────────────
- * Shell — runs inside a GUI window
- * ───────────────────────────────────────────── */
-static int   term_wid   = -1;  /* Terminal window ID     */
-static char  input_line[256];
-static int   input_len  = 0;
+/* ── Shell ── */
+static int  term_wid  = -1;
+static char input_line[256];
+static int  input_len = 0;
 
 static void shell_prompt(void) {
     gui_set_color(term_wid, 0x0044FF88);
@@ -76,47 +69,33 @@ static void shell_prompt(void) {
 }
 
 static void shell_run(const char *line) {
-    /* mem */
-    if (line[0]=='m' && line[1]=='e' && line[2]=='m' && !line[3]) {
+    if (line[0]=='m'&&line[1]=='e'&&line[2]=='m'&&!line[3]) {
         gui_set_color(term_wid, 0x004488FF);
-        gui_print(term_wid, "\n  Memory Status\n  ─────────────\n");
+        gui_print(term_wid, "\n  Memory\n  ──────\n");
         gui_set_color(term_wid, GUI_WINFG);
-        gui_print(term_wid, "  RAM free:  ");
-        gui_print_dec(term_wid, (pmm_get_free_pages() * 4096) / (1024*1024));
-        gui_print(term_wid, " MB\n  Heap free: ");
-        gui_print_dec(term_wid, heap_get_free() / 1024);
-        gui_print(term_wid, " KB\n  Heap used: ");
-        gui_print_dec(term_wid, heap_get_used());
-        gui_print(term_wid, " bytes\n");
+        gui_print(term_wid, "  RAM:  "); gui_print_dec(term_wid,(pmm_get_free_pages()*4096)/(1024*1024)); gui_print(term_wid," MB free\n");
+        gui_print(term_wid, "  Heap: "); gui_print_dec(term_wid,heap_get_free()/1024); gui_print(term_wid," KB free\n");
         return;
     }
-
-    /* cls */
-    if (line[0]=='c' && line[1]=='l' && line[2]=='s' && !line[3]) {
+    if (line[0]=='c'&&line[1]=='l'&&line[2]=='s'&&!line[3]) {
         gui_clear_window(term_wid);
         gui_set_color(term_wid, 0x0044FF88);
         gui_print(term_wid, "  Lons OS Terminal\n");
         gui_set_color(term_wid, GUI_WINFG);
         return;
     }
-
-    /* help */
-    if (line[0]=='h' && line[1]=='e' && line[2]=='l' && line[3]=='p' && !line[4]) {
+    if (line[0]=='h'&&line[1]=='e'&&line[2]=='l'&&line[3]=='p'&&!line[4]) {
         gui_set_color(term_wid, 0x004488FF);
         gui_print(term_wid, "\n  Commands\n  ────────\n");
         gui_set_color(term_wid, GUI_WINFG);
-        gui_print(term_wid, "  mem    show memory usage\n");
-        gui_print(term_wid, "  cls    clear terminal\n");
-        gui_print(term_wid, "  help   this list\n");
+        gui_print(term_wid, "  mem   memory usage\n");
+        gui_print(term_wid, "  cls   clear screen\n");
+        gui_print(term_wid, "  help  this list\n");
         return;
     }
-
-    /* unknown */
-    if (line[0] != 0) {
+    if (line[0]) {
         gui_set_color(term_wid, 0x00FF4444);
-        gui_print(term_wid, "\n  Unknown: ");
-        gui_print(term_wid, line);
-        gui_print(term_wid, "\n");
+        gui_print(term_wid, "\n  Unknown: "); gui_print(term_wid, line); gui_print(term_wid, "\n");
         gui_set_color(term_wid, GUI_WINFG);
     }
 }
@@ -128,135 +107,129 @@ static void shell_key(char c) {
         shell_run(input_line);
         input_len = 0;
         shell_prompt();
-
     } else if (c == '\b') {
-        /* Backspace — delete last character */
-        if (input_len > 0) {
-            input_len--;
-            gui_backspace(term_wid);  /* Erase pixel from screen */
-        }
-
+        if (input_len > 0) { input_len--; gui_backspace(term_wid); }
     } else if (input_len < 254) {
-        char str[2] = {c, 0};
-        gui_print(term_wid, str);
+        char s[2] = {c, 0};
+        gui_print(term_wid, s);
         input_line[input_len++] = c;
     }
 }
 
+/* ── Mouse click handler ── */
+static uint8_t prev_buttons = 0;
+
+static void handle_mouse(void) {
+    int32_t mx = mouse_x();
+    int32_t my = mouse_y();
+    uint8_t btn = mouse_buttons();
+
+    /* Detect left button press (not held — only on transition 0→1) */
+    uint8_t just_clicked = btn & ~prev_buttons & MOUSE_LEFT;
+    prev_buttons = btn;
+
+    if (!just_clicked) return;
+
+    /* Check if click landed on any window's title bar — focus it */
+    for (int i = 0; i < GUI_MAX_WINDOWS; i++) {
+        gui_window_t *w = &g_windows[i];
+        if (!w->visible) continue;
+
+        int in_x = (mx >= w->x && mx < w->x + (int32_t)w->w);
+        int in_tb = (my >= w->y && my < w->y + TITLEBAR_H);
+
+        if (in_x && in_tb) {
+            gui_window_focus(i);
+            /* Redraw cursor on top after focus change */
+            mouse_draw_cursor();
+            return;
+        }
+    }
+}
+
 /* ─────────────────────────────────────────────
- * _start — Kernel entry point
+ * _start
  * ───────────────────────────────────────────── */
 void _start(void) {
 
-    /* ── 1. Framebuffer (early — needed for boot log) ── */
-    if (!fb_req.response || fb_req.response->framebuffer_count == 0)
-        cpu_halt();
+    if (!fb_req.response || fb_req.response->framebuffer_count == 0) cpu_halt();
     fb_init(fb_req.response);
     fb_console_init();
 
-    /* Boot log header */
-    for (uint32_t y = 0; y < 36; y++)
-        for (uint32_t x = 0; x < g_fb.width; x++)
-            fb_put_pixel(x, y, 0x001E1E2E);
-    fb_print_at(8, 10, "Lons OS", 0x00FFFFFF, 0x001E1E2E);
-    fb_print_at(g_fb.width - 120, 10, "Booting...", 0x00AAAAAA, 0x001E1E2E);
+    for (uint32_t y=0;y<36;y++) for (uint32_t x=0;x<g_fb.width;x++) fb_put_pixel(x,y,0x001E1E2E);
+    fb_print_at(8,10,"Lons OS",0x00FFFFFF,0x001E1E2E);
+    fb_print_at(g_fb.width-120,10,"Booting...",0x00AAAAAA,0x001E1E2E);
 
-    fb_console_set_color(0x0044FF88, 0x00000000);
-    kprint("\n\n  Lons OS Boot Log\n");
-    kprint("  ----------------\n\n");
-    fb_console_set_color(0x00FFFFFF, 0x00000000);
+    fb_console_set_color(0x0044FF88,0);
+    kprint("\n\n  Lons OS Boot Log\n  ----------------\n\n");
+    fb_console_set_color(0x00FFFFFF,0);
 
-    /* ── 2. GDT ── */
-    kprint("  [GDT] Loading descriptor tables...    ");
-    gdt_init(); print_ok();
+    kprint("  [GDT]  Loading descriptor tables...    "); gdt_init();  print_ok();
+    kprint("  [IDT]  Installing exception handlers... "); idt_init();  print_ok();
 
-    /* ── 3. IDT ── */
-    kprint("  [IDT] Installing exception handlers... ");
-    idt_init(); print_ok();
+    if (!memmap_req.response||!memmap_req.response->entry_count) print_fail("  [FATAL] No memory map!");
+    if (!hhdm_req.response)   print_fail("  [FATAL] No HHDM!");
+    if (!kaddr_req.response)  print_fail("  [FATAL] No kernel address!");
 
-    /* ── 4. Validate Limine responses ── */
-    if (!memmap_req.response || memmap_req.response->entry_count == 0)
-        print_fail("  [FATAL] No memory map!");
-    if (!hhdm_req.response)
-        print_fail("  [FATAL] No HHDM!");
-    if (!kaddr_req.response)
-        print_fail("  [FATAL] No kernel address!");
+    uint64_t hhdm   = hhdm_req.response->offset;
+    uint64_t kphys  = kaddr_req.response->physical_base;
+    uint64_t kvirt  = kaddr_req.response->virtual_base;
 
-    uint64_t hhdm_offset = hhdm_req.response->offset;
-    uint64_t kern_phys   = kaddr_req.response->physical_base;
-    uint64_t kern_virt   = kaddr_req.response->virtual_base;
+    kprint("  [PMM]  Initializing...                 "); pmm_init(memmap_req.response,hhdm); print_ok();
+    kprint("  [VMM]  Building page tables...         "); vmm_init(hhdm,memmap_req.response,kphys,kvirt); print_ok();
+    kprint("  [HEAP] Initializing...                 "); heap_init(kvirt+(512ULL*1024*1024),16ULL*1024*1024); print_ok();
+    kprint("  [PIC]  Remapping controllers...        "); pic_init();  print_ok();
+    kprint("  [KBD]  Installing keyboard driver...   "); kbd_init();  print_ok();
+    kprint("  [MOUSE] Installing mouse driver...     "); mouse_init(); print_ok();
+    kprint("  [CPU]  Enabling interrupts...          "); __asm__ volatile("sti"); print_ok();
+    kprint("  [GUI]  Starting window manager...      ");
 
-    /* ── 5. PMM ── */
-    kprint("  [PMM] Initializing...                 ");
-    pmm_init(memmap_req.response, hhdm_offset); print_ok();
-    kprint("  [PMM] RAM: ");
-    kprint_dec((pmm_get_free_pages() * 4096) / (1024*1024));
-    kprint(" MB free\n");
+    for (volatile int i=0;i<50000000;i++);
 
-    /* ── 6. VMM ── */
-    kprint("  [VMM] Building kernel page tables...  ");
-    vmm_init(hhdm_offset, memmap_req.response, kern_phys, kern_virt);
-    print_ok();
-
-    /* ── 7. Heap ── */
-    kprint("  [HEAP] Initializing...                ");
-    heap_init(kern_virt + (512ULL * 1024 * 1024), 16ULL * 1024 * 1024);
-    print_ok();
-
-    /* ── 8. PIC ── */
-    kprint("  [PIC] Remapping interrupt controller... ");
-    pic_init(); print_ok();
-
-    /* ── 9. Keyboard ── */
-    kprint("  [KBD] Installing PS/2 driver...       ");
-    kbd_init(); print_ok();
-
-    /* ── 10. Enable interrupts ── */
-    kprint("  [CPU] Enabling interrupts...          ");
-    __asm__ volatile ("sti");
-    print_ok();
-
-    /* ── 11. GUI ── */
-    kprint("  [GUI] Starting window manager...      ");
-
-    /* Small delay loop — let boot log be visible briefly */
-    for (volatile int i = 0; i < 50000000; i++);
-
-    /* Draw desktop */
     gui_init();
 
-    /* Create terminal window — centered on screen */
-    uint32_t win_w = (g_fb.width  * 3) / 4;  /* 75% of screen width  */
-    uint32_t win_h = (g_fb.height * 3) / 4;  /* 75% of screen height */
-    int32_t  win_x = (int32_t)((g_fb.width  - win_w) / 2);
-    int32_t  win_y = (int32_t)((g_fb.height - win_h) / 2) + MENUBAR_H / 2;
+    uint32_t ww = (g_fb.width*3)/4;
+    uint32_t wh = (g_fb.height*3)/4;
+    int32_t  wx = (int32_t)((g_fb.width -ww)/2);
+    int32_t  wy = (int32_t)((g_fb.height-wh)/2)+MENUBAR_H/2;
 
-    term_wid = gui_window_create(win_x, win_y, win_w, win_h, "Terminal");
+    term_wid = gui_window_create(wx, wy, ww, wh, "Terminal");
     gui_window_focus(term_wid);
 
-    print_ok();  /* This goes to the old boot log console - harmless */
+    print_ok();
 
-    /* ── Welcome message in the terminal window ── */
     gui_set_color(term_wid, 0x0044FF88);
     gui_print(term_wid, "  Welcome to Lons OS\n");
     gui_set_color(term_wid, 0x00AAAAAA);
     gui_print(term_wid, "  ──────────────────────────────────────\n");
     gui_set_color(term_wid, GUI_WINFG);
-    gui_print(term_wid, "  Type 'help' to see available commands.\n");
-    gui_print(term_wid, "  Backspace works. Shift works. Caps Lock works.\n");
+    gui_print(term_wid, "  Type 'help' for commands.\n");
+    gui_print(term_wid, "  Mouse cursor active — click to focus.\n");
     gui_set_color(term_wid, 0x00AAAAAA);
     gui_print(term_wid, "  ──────────────────────────────────────\n");
     gui_set_color(term_wid, GUI_WINFG);
 
     shell_prompt();
 
+    /* Draw initial cursor */
+    mouse_draw_cursor();
+
     /* ── Main event loop ── */
     while (1) {
-        __asm__ volatile ("hlt"); /* Sleep until interrupt */
+        __asm__ volatile ("hlt");
 
+        /* Mouse events */
+        if (mouse_poll()) {
+            mouse_erase_cursor();
+            handle_mouse();
+            mouse_draw_cursor();
+        }
+
+        /* Keyboard events */
         while (kbd_haschar()) {
-            char c = kbd_getchar();
-            shell_key(c);
+            mouse_erase_cursor();
+            shell_key(kbd_getchar());
+            mouse_draw_cursor();
         }
     }
 }
